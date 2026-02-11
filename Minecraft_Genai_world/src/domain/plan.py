@@ -22,7 +22,8 @@ class TerrainSettings(BaseModel):
     roughness: int
     vegetation: int
     base_block: str
-    path_material: str = "gravel"  # <--- TO POLE JEST KLUCZOWE!
+    # --- NOWOŚĆ: To pole naprawia błąd ValidationError ---
+    path_material: str = "gravel" 
 
 class WorldPlan(BaseModel):
     brand_name: str

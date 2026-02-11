@@ -19,24 +19,18 @@ if api_key and api_key != "OFFLINE":
 def generate_world_plan(brief: MarketingBrief) -> WorldPlan:
     print(f"🧠 (AI) Analiza życzenia: '{brief.user_request}'")
 
-    # --- FALLBACK (Plan Awaryjny) ---
+    # Fallback
     default_design = BuildingDesign(
         wall_material="oak_planks", roof_material="oak_stairs", 
         floor_material="stone", window_material="glass_pane", 
         height=6, width=9, length=9, roof_type="A-frame"
     )
-    
-    # TUTAJ BYŁ BŁĄD. Zmieniamy obiekt TerrainSettings na zwykły słownik.
-    # To naprawia błąd "ValidationError".
     fallback_plan = WorldPlan(
         brand_name=brief.brand_name,
         brand_story="Fallback",
         terrain={
-            "theme": "Default", 
-            "roughness": 5, 
-            "vegetation": 5, 
-            "base_block": "grass_block",
-            "path_material": "gravel"  # <--- Upewnij się, że to pole jest w plan.py!
+            "theme": "Default", "roughness": 5, "vegetation": 5, 
+            "base_block": "grass_block", "path_material": "gravel"
         },
         zones=[
             Zone(zone_type="home_cafe", name="Cafe", purpose="Social", design=default_design),
@@ -47,43 +41,40 @@ def generate_world_plan(brief: MarketingBrief) -> WorldPlan:
 
     if not api_key: return fallback_plan
 
-    # Używamy modelu 2.0 Flash dla stabilności JSON
     models = ["models/gemini-2.5-flash"]
 
+    # --- ZMIENIONY PROMPT: DYNAMICZNA LICZBA BUDYNKÓW ---
     prompt = f"""
-    Jesteś Architektem Minecraft (Java 1.20).
+    Jesteś Architektem Minecraft.
     Marka: "{brief.brand_name}".
-    Opis gracza: "{brief.user_request}".
+    Życzenie Gracza: "{brief.user_request}".
     
     ZADANIE:
-    1. Zinterpretuj opis i dobierz biom (base_block) oraz materiał ścieżek (path_material).
-    2. Zaprojektuj 3 budynki (Kawiarnia, Plantacja, Palarnia).
+    1. Dobierz biom (base_block) i materiał ścieżek (path_material).
+    2. Zaprojektuj listę budynków (Zones).
+       - Jeśli gracz nie podał liczby: zrób standardowe 3 (Kawiarnia, Plantacja, Palarnia).
+       - Jeśli gracz chce "duże miasto" lub "4 budynki": wygeneruj tyle, ile chce (max 6).
     
     WYMAGANY FORMAT JSON:
     {{
       "brand_name": "{brief.brand_name}",
       "brand_story": "Opis...",
       "terrain": {{
-        "theme": "Nazwa biomu",
-        "roughness": 5,
-        "vegetation": 5,
-        "base_block": "snow_block",
-        "path_material": "packed_ice"
+        "theme": "Nazwa biomu", "roughness": 5, "vegetation": 5,
+        "base_block": "snow_block", "path_material": "packed_ice"
       }},
       "zones": [
         {{
-          "zone_type": "home_cafe",
-          "name": "Nazwa",
+          "zone_type": "unique_id_1",
+          "name": "Nazwa Budynku 1",
           "purpose": "Cel",
           "design": {{
-             "wall_material": "snow_block",
-             "roof_material": "blue_wool",
-             "floor_material": "spruce_planks",
-             "window_material": "ice",
+             "wall_material": "snow_block", "roof_material": "blue_wool",
+             "floor_material": "spruce_planks", "window_material": "ice",
              "height": 6, "width": 10, "length": 10, "roof_type": "flat"
           }}
         }},
-        ... (kolejne dwie strefy w tym samym formacie) ...
+        {{ ... (kolejne budynki - tyle ile potrzeba) ... }}
       ]
     }}
     """
@@ -92,27 +83,16 @@ def generate_world_plan(brief: MarketingBrief) -> WorldPlan:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
-            raw_text = response.text
-            
-            # Chirurgiczne wycinanie JSON
-            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            match = re.search(r'\{.*\}', response.text, re.DOTALL)
             
             if match:
-                clean_json = match.group(0)
-                data = json.loads(clean_json)
-                
-                if "terrain" not in data:
-                     print(f"⚠️ Model {model_name} pominął teren.")
-                     continue
-
-                print(f"✅ AI wygenerowało poprawny JSON! (Model: {model_name})")
+                data = json.loads(match.group(0))
+                if "terrain" not in data: continue
+                print(f"✅ AI wygenerowało {len(data.get('zones', []))} stref! (Model: {model_name})")
                 return WorldPlan(**data)
-            else:
-                print(f"⚠️ Błąd parsowania: Nie znaleziono JSON.")
 
         except Exception as e:
             print(f"⚠️ Błąd {model_name}: {e}")
             continue 
 
-    print("❌ Wszystkie modele zawiodły. Uruchamiam Fallback.")
     return fallback_plan
